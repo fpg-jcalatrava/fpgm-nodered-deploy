@@ -30,7 +30,8 @@ pipeline {
             steps {
                 sh '''
                     mkdir -p ${DEPLOY_DIR}/data
-                    chmod -R 777 ${DEPLOY_DIR}/data
+                    chown -R 1000:1000 ${DEPLOY_DIR}/data || true
+                    chmod -R 755 ${DEPLOY_DIR}/data || true
                 '''
             }
         }
