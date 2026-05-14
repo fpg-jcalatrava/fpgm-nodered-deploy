@@ -29,9 +29,13 @@ pipeline {
         stage('Prepare Persistent Data') {
             steps {
                 sh '''
-                    mkdir -p ${DEPLOY_DIR}/data
-                    chown -R 1000:1000 ${DEPLOY_DIR}/data || true
-                    chmod -R 755 ${DEPLOY_DIR}/data || true
+                    docker run --rm -u root \
+                      -v ${DEPLOY_DIR}:/mnt \
+                      alpine:latest sh -c "
+                        mkdir -p /mnt/data &&
+                        chown -R 1000:1000 /mnt/data &&
+                        chmod -R 755 /mnt/data
+                      "
                 '''
             }
         }
@@ -61,11 +65,30 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh '''
+                    echo "Checking container..."
                     docker ps --filter name=${APP_NAME}
+
+                    echo "Checking /data permission..."
+                    docker exec ${APP_NAME} sh -c 'id && ls -la /data'
+
+                    echo "Checking Node-RED HTTP..."
                     sleep 5
                     curl -I http://localhost:${NODE_RED_PORT} || true
                 '''
             }
+        }
+    }
+
+    post {
+        failure {
+            sh '''
+                echo "Node-RED deployment failed. Showing logs..."
+                docker logs --tail=100 ${APP_NAME} || true
+            '''
+        }
+
+        success {
+            echo 'Node-RED deployment completed successfully.'
         }
     }
 }
