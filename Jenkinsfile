@@ -1,17 +1,73 @@
 pipeline {
+
     agent {
-        label 'docker-slave-02'
+        label "${params.TARGET_AGENT}"
+    }
+
+    parameters {
+
+        choice(
+            name: 'TARGET_AGENT',
+            choices: [
+                'docker-slave-01',
+                'docker-slave-02',
+                'docker-slave-prod'
+            ],
+            description: 'Target Jenkins Docker agent'
+        )
+
+        string(
+            name: 'APP_NAME',
+            defaultValue: 'nodered',
+            description: 'Docker container name'
+        )
+
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: 'latest',
+            description: 'Docker image tag'
+        )
+
+        string(
+            name: 'NODE_RED_PORT',
+            defaultValue: '1880',
+            description: 'Node-RED exposed port'
+        )
+
+        string(
+            name: 'DEPLOY_DIR',
+            defaultValue: '/home/jenkins/deploy/nodered',
+            description: 'Persistent data directory'
+        )
+
+        string(
+            name: 'TZ',
+            defaultValue: 'Asia/Manila',
+            description: 'Timezone'
+        )
+
+        text(
+            name: 'NODE_RED_ENV',
+            defaultValue: '''\
+KAFKA_BROKER=10.52.2.10:9092
+API_BASE_URL=https://api.fpgins.com
+''',
+            description: 'Additional environment variables'
+        )
     }
 
     environment {
-        APP_NAME = 'nodered'
         IMAGE_NAME = 'fpg-nodered'
-        IMAGE_TAG = 'latest'
-        NODE_RED_PORT = '1880'
-        DEPLOY_DIR = '/home/jenkins/deploy/nodered'
     }
 
     stages {
+
+        stage('Show Target') {
+            steps {
+                echo "Deploying to agent: ${params.TARGET_AGENT}"
+            }
+        }
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -40,6 +96,15 @@ pipeline {
             }
         }
 
+        stage('Generate Env File') {
+            steps {
+                writeFile file: '.env', text: """
+TZ=${TZ}
+${NODE_RED_ENV}
+"""
+            }
+        }
+
         stage('Stop Existing Container') {
             steps {
                 sh '''
@@ -55,8 +120,8 @@ pipeline {
                       --name ${APP_NAME} \
                       --restart unless-stopped \
                       -p ${NODE_RED_PORT}:1880 \
+                      --env-file .env \
                       -v ${DEPLOY_DIR}/data:/data \
-                      -e TZ=Asia/Manila \
                       ${IMAGE_NAME}:${IMAGE_TAG}
                 '''
             }
@@ -65,13 +130,13 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh '''
-                    echo "Checking container..."
+                    echo "Container Status:"
                     docker ps --filter name=${APP_NAME}
 
-                    echo "Checking /data permission..."
-                    docker exec ${APP_NAME} sh -c 'id && ls -la /data'
+                    echo "Container Environment:"
+                    docker exec ${APP_NAME} env
 
-                    echo "Checking Node-RED HTTP..."
+                    echo "Checking Node-RED..."
                     sleep 5
                     curl -I http://localhost:${NODE_RED_PORT} || true
                 '''
@@ -80,9 +145,10 @@ pipeline {
     }
 
     post {
+
         failure {
             sh '''
-                echo "Node-RED deployment failed. Showing logs..."
+                echo "Deployment failed. Showing logs..."
                 docker logs --tail=100 ${APP_NAME} || true
             '''
         }
