@@ -1,19 +1,18 @@
 pipeline {
 
     agent {
-        label "${params.TARGET_AGENT}"
+        label "${params.TARGET_LABEL}"
     }
 
     parameters {
 
         choice(
-            name: 'TARGET_AGENT',
+            name: 'TARGET_LABEL',
             choices: [
-                'docker-slave-01',
-                'docker-slave-02',
-                'docker-slave-prod'
+                'docker && phdcpldev02',
+                'docker && payment-dev'
             ],
-            description: 'Target Jenkins Docker agent'
+            description: 'Target deployment server'
         )
 
         string(
@@ -23,15 +22,9 @@ pipeline {
         )
 
         string(
-            name: 'IMAGE_TAG',
-            defaultValue: 'latest',
-            description: 'Docker image tag'
-        )
-
-        string(
             name: 'NODE_RED_PORT',
             defaultValue: '1880',
-            description: 'Node-RED exposed port'
+            description: 'Node-RED port'
         )
 
         string(
@@ -41,18 +34,17 @@ pipeline {
         )
 
         string(
-            name: 'TZ',
-            defaultValue: 'Asia/Manila',
-            description: 'Timezone'
+            name: 'IMAGE_TAG',
+            defaultValue: 'latest',
+            description: 'Docker image tag'
         )
 
         text(
             name: 'NODE_RED_ENV',
             defaultValue: '''\
-KAFKA_BROKER=10.52.2.10:9092
-API_BASE_URL=https://api.fpgins.com
+TZ=Asia/Manila
 ''',
-            description: 'Additional environment variables'
+            description: 'Environment variables'
         )
     }
 
@@ -64,7 +56,8 @@ API_BASE_URL=https://api.fpgins.com
 
         stage('Show Target') {
             steps {
-                echo "Deploying to agent: ${params.TARGET_AGENT}"
+                echo "Running on Jenkins node: ${env.NODE_NAME}"
+                echo "Using label selector: ${params.TARGET_LABEL}"
             }
         }
 
@@ -74,7 +67,7 @@ API_BASE_URL=https://api.fpgins.com
             }
         }
 
-        stage('Build Node-RED Image') {
+        stage('Build Image') {
             steps {
                 sh '''
                     docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
@@ -82,7 +75,7 @@ API_BASE_URL=https://api.fpgins.com
             }
         }
 
-        stage('Prepare Persistent Data') {
+        stage('Prepare Persistent Storage') {
             steps {
                 sh '''
                     docker run --rm -u root \
@@ -99,7 +92,6 @@ API_BASE_URL=https://api.fpgins.com
         stage('Generate Env File') {
             steps {
                 writeFile file: '.env', text: """
-TZ=${TZ}
 ${NODE_RED_ENV}
 """
             }
@@ -127,17 +119,13 @@ ${NODE_RED_ENV}
             }
         }
 
-        stage('Verify Deployment') {
+        stage('Verify') {
             steps {
                 sh '''
-                    echo "Container Status:"
                     docker ps --filter name=${APP_NAME}
 
-                    echo "Container Environment:"
-                    docker exec ${APP_NAME} env
-
-                    echo "Checking Node-RED..."
                     sleep 5
+
                     curl -I http://localhost:${NODE_RED_PORT} || true
                 '''
             }
@@ -148,13 +136,12 @@ ${NODE_RED_ENV}
 
         failure {
             sh '''
-                echo "Deployment failed. Showing logs..."
                 docker logs --tail=100 ${APP_NAME} || true
             '''
         }
 
         success {
-            echo 'Node-RED deployment completed successfully.'
+            echo 'Deployment completed successfully.'
         }
     }
 }
