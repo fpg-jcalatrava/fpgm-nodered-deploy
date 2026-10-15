@@ -38,7 +38,7 @@ pipeline {
         string(
             name: 'IMAGE_TAG',
             defaultValue: 'latest',
-            description: 'Docker image tag'
+            description: 'Node-RED base image version and built image tag'
         )
 
         text(
@@ -72,7 +72,8 @@ TZ=Asia/Manila
         stage('Build Image') {
             steps {
                 sh '''
-                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    docker build --build-arg IMAGE_TAG="${IMAGE_TAG}" \
+                      -t "${IMAGE_NAME}:${IMAGE_TAG}" .
                 '''
             }
         }

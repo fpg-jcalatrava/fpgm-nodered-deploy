@@ -1,4 +1,5 @@
-FROM nodered/node-red:latest
+ARG IMAGE_TAG=latest
+FROM nodered/node-red:${IMAGE_TAG}
 
 USER root
 
