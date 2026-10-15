@@ -9,6 +9,7 @@ pipeline {
         choice(
             name: 'TARGET_LABEL',
             choices: [
+                'docker && phdcpldev01',
                 'docker && phdcpldev02',
                 'docker && payment-dev',
                 'docker && payment-platform-prod'
